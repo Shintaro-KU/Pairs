@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Pairs アシスタント</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#f8f0f5; }
+    .btn-primary { background:linear-gradient(135deg,#e0457b,#c0306a); }
+    .btn-primary:active { opacity:.85; }
+    .btn-ghost { background:#fce7f0; color:#e0457b; }
+    .nav-active { color:#e0457b; }
+    .nav-active svg { stroke:#e0457b; }
+    textarea,input[type=text],input[type=password] { font-size:16px!important; }
+    .spinner { border:3px solid #f3c4d8; border-top:3px solid #e0457b; border-radius:50%; width:24px; height:24px; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .result-card { border-left:4px solid #e0457b; }
+    .girl-item:active { background:#fce7f0; }
+    .screen { display:none; }
+    .screen.active { display:block; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ===== 認証画面 ===== -->
+<div id="screen-auth" class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-sm space-y-5">
+    <div class="text-center">
+      <div class="text-5xl mb-2">💬</div>
+      <h1 class="text-2xl font-bold text-gray-800">Pairs アシスタント</h1>
+      <p class="text-sm text-gray-500 mt-1">ログインして始める</p>
+    </div>
+    <div class="bg-white rounded-2xl p-5 shadow-sm space-y-3">
+      <input type="text" id="auth-username" placeholder="ユーザー名"
+        class="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300">
+      <input type="password" id="auth-password" placeholder="パスワード"
+        class="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300">
+      <div id="auth-error" class="hidden text-red-500 text-sm text-center"></div>
+      <button onclick="doLogin()"
+        class="btn-primary w-full text-white font-bold py-3 rounded-xl">ログイン</button>
+      <button onclick="doRegister()"
+        class="w-full border border-pink-300 text-pink-500 font-semibold py-3 rounded-xl">新規登録</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== アプリ本体 ===== -->
+<div id="app" class="hidden flex flex-col" style="min-height:100dvh">
+
+  <!-- ヘッダー -->
+  <header class="bg-white shadow-sm sticky top-0 z-20">
+    <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">💬</span>
+        <span class="font-bold text-gray-800 text-base">Pairs アシスタント</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="openGirlPicker()"
+          class="flex items-center gap-1 bg-pink-50 border border-pink-200 rounded-xl px-3 py-1.5 text-sm text-pink-600 font-semibold max-w-32 truncate">
+          <span id="header-girl-name" class="truncate">相手を選択</span>
+          <span class="text-xs">▼</span>
+        </button>
+        <button onclick="doLogout()" class="text-xs text-gray-400">ログアウト</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 overflow-y-auto pb-24 max-w-lg mx-auto w-full px-4 pt-4">
+
+    <!-- 返信画面 -->
+    <div id="pane-reply" class="screen active space-y-4">
+      <div id="no-girl-msg" class="bg-white rounded-2xl p-6 text-center shadow-sm">
+        <p class="text-gray-500 text-sm mb-3">相手の女の子を選択または追加してください</p>
+        <button onclick="showPane('girls')"
+          class="btn-primary text-white font-bold px-6 py-3 rounded-xl">相手一覧へ</button>
+      </div>
+      <div id="reply-main" class="hidden space-y-4">
+        <!-- 目標 -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm">
+          <label class="block text-sm font-semibold text-gray-700 mb-2">目標</label>
+          <select id="goal" onchange="onGoalChange()"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300">
+            <option value="natural">💬 自然な会話を続ける</option>
+            <option value="phone">📞 電話・通話に誘う</option>
+            <option value="date">🍽️ 食事・デートに誘う</option>
+          </select>
+        </div>
+        <!-- 相手プロフィール -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-semibold text-gray-700">相手のプロフィール</label>
+            <button onclick="triggerUpload('partner-input')"
+              class="btn-ghost text-xs font-semibold px-3 py-1.5 rounded-xl">📷 スクショ</button>
+          </div>
+          <input type="file" id="partner-input" accept="image/*" multiple class="hidden"
+            onchange="handleExtract(this,'partner_profile','partner-profile')">
+          <div id="partner-previews" class="flex gap-1.5 flex-wrap"></div>
+          <div id="partner-loading" class="hidden flex items-center gap-2 text-xs text-pink-500"><div class="spinner"></div><span>読み取り中...</span></div>
+          <textarea id="partner-profile" rows="3" oninput="onPartnerChange()"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none"
+            placeholder="相手の趣味タグや自己紹介を入力 / スクショで自動入力"></textarea>
+        </div>
+        <!-- 会話ログ -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-semibold text-gray-700">
+              会話ログ
+              <span class="text-xs text-green-600 font-normal ml-1">（自動保存）</span>
+            </label>
+            <div class="flex gap-2">
+              <button onclick="triggerUpload('conv-input')"
+                class="btn-ghost text-xs font-semibold px-3 py-1.5 rounded-xl">📷 追加</button>
+              <button onclick="clearConversation()"
+                class="text-xs text-gray-400 px-2 py-1.5 rounded-xl">クリア</button>
+            </div>
+          </div>
+          <input type="file" id="conv-input" accept="image/*" multiple class="hidden"
+            onchange="handleExtract(this,'conversation','conversation')">
+          <div id="conv-previews" class="flex gap-1.5 flex-wrap"></div>
+          <div id="conv-loading" class="hidden flex items-center gap-2 text-xs text-pink-500"><div class="spinner"></div><span>読み取り中...</span></div>
+          <p class="text-xs text-gray-400">複数スクショ可・追加するたび末尾に追記されます</p>
+          <textarea id="conversation" rows="8" oninput="onConvChange()"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none font-mono text-xs"
+            placeholder="相手: はじめまして！&#10;自分: こちらこそ！&#10;相手: 映画好きなんですか？"></textarea>
+        </div>
+        <!-- 生成ボタン -->
+        <button onclick="generate()"
+          class="btn-primary w-full text-white font-bold py-4 rounded-2xl shadow-md text-base active:scale-95 transition-transform">
+          返信案を3つ作る ✨
+        </button>
+        <div id="gen-loading" class="hidden flex justify-center py-3"><div class="spinner"></div></div>
+        <div id="gen-error" class="hidden bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3"></div>
+        <!-- 結果 -->
+        <div id="results" class="space-y-3 hidden">
+          <p class="text-xs text-gray-500">「送信済み」を押すと会話ログに自動追記されます</p>
+          <div id="card-1" class="result-card bg-white rounded-2xl p-4 shadow-sm">
+            <span class="text-xs font-bold text-pink-500 block mb-1">案 1</span>
+            <p id="text-1" class="text-gray-800 text-sm leading-relaxed mb-3"></p>
+            <div class="flex gap-2">
+              <button onclick="copyReply(1)" class="flex-1 text-xs bg-gray-100 text-gray-600 rounded-lg py-2 font-semibold">コピー</button>
+              <button onclick="markSent(1)" class="flex-1 text-xs bg-green-50 text-green-700 rounded-lg py-2 font-semibold border border-green-200">✓ 送信済みとして記録</button>
+            </div>
+          </div>
+          <div id="card-2" class="result-card bg-white rounded-2xl p-4 shadow-sm">
+            <span class="text-xs font-bold text-pink-500 block mb-1">案 2</span>
+            <p id="text-2" class="text-gray-800 text-sm leading-relaxed mb-3"></p>
+            <div class="flex gap-2">
+              <button onclick="copyReply(2)" class="flex-1 text-xs bg-gray-100 text-gray-600 rounded-lg py-2 font-semibold">コピー</button>
+              <button onclick="markSent(2)" class="flex-1 text-xs bg-green-50 text-green-700 rounded-lg py-2 font-semibold border border-green-200">✓ 送信済みとして記録</button>
+            </div>
+          </div>
+          <div id="card-3" class="result-card bg-white rounded-2xl p-4 shadow-sm">
+            <span class="text-xs font-bold text-pink-500 block mb-1">案 3</span>
+            <p id="text-3" class="text-gray-800 text-sm leading-relaxed mb-3"></p>
+            <div class="flex gap-2">
+              <button onclick="copyReply(3)" class="flex-1 text-xs bg-gray-100 text-gray-600 rounded-lg py-2 font-semibold">コピー</button>
+              <button onclick="markSent(3)" class="flex-1 text-xs bg-green-50 text-green-700 rounded-lg py-2 font-semibold border border-green-200">✓ 送信済みとして記録</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 相手一覧画面 -->
+    <div id="pane-girls" class="screen space-y-3">
+      <button onclick="addGirl()"
+        class="btn-primary w-full text-white font-bold py-3 rounded-2xl shadow-md active:scale-95 transition-transform">
+        ＋ 新しい相手を追加
+      </button>
+      <div id="girls-list" class="space-y-2"></div>
+    </div>
+
+    <!-- スタイル学習画面 -->
+    <div id="pane-style" class="screen space-y-4">
+      <div class="bg-white rounded-2xl p-4 shadow-sm space-y-2">
+        <h2 class="font-bold text-gray-800">🧠 自分の返信スタイルを学習</h2>
+        <p class="text-xs text-gray-500">過去のマッチングアプリの会話ログを入れると、あなたらしい文体でAIが返信案を作れるようになります。</p>
+      </div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-semibold text-gray-700">過去の会話ログ（テキスト）</label>
+        </div>
+        <textarea id="style-text" rows="6"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none text-xs font-mono"
+          placeholder="過去の会話をテキストで貼り付け&#10;例:&#10;自分: 好きな映画ある？&#10;相手: 最近はアクション系にはまってる！&#10;自分: わかる〜！俺もそれ系好きすぎて..."></textarea>
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-semibold text-gray-700">または会話スクショ</label>
+          <button onclick="triggerUpload('style-input')"
+            class="btn-ghost text-xs font-semibold px-3 py-1.5 rounded-xl">📷 複数選択</button>
+        </div>
+        <input type="file" id="style-input" accept="image/*" multiple class="hidden"
+          onchange="handleStyleImages(this)">
+        <div id="style-previews" class="flex gap-1.5 flex-wrap"></div>
+        <div id="style-loading" class="hidden flex items-center gap-2 text-xs text-pink-500"><div class="spinner"></div><span>分析中...</span></div>
+        <button onclick="trainStyle()"
+          class="btn-primary w-full text-white font-bold py-3 rounded-xl active:scale-95 transition-transform">
+          スタイルを分析・学習する 🧠
+        </button>
+      </div>
+      <div id="style-result-box" class="hidden bg-white rounded-2xl p-4 shadow-sm space-y-2">
+        <h3 class="text-sm font-bold text-gray-700">分析された返信スタイル</h3>
+        <p id="style-result-text" class="text-sm text-gray-700 leading-relaxed"></p>
+        <p class="text-xs text-green-600">✓ このスタイルを踏まえて返信案が作られます</p>
+      </div>
+    </div>
+
+    <!-- 設定画面 -->
+    <div id="pane-settings" class="screen space-y-4">
+      <div class="bg-pink-50 border border-pink-200 rounded-2xl px-4 py-3 text-sm text-pink-700">
+        ログイン中: <strong id="setting-username"></strong>
+      </div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+        <label class="block text-sm font-semibold text-gray-700">Anthropic APIキー</label>
+        <input type="password" id="api-key"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300"
+          placeholder="sk-ant-...">
+        <p class="text-xs text-gray-400">サーバー側に保存（デバイス間で共有されます）</p>
+      </div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+        <label class="block text-sm font-semibold text-gray-700">自分の趣味・タグ</label>
+        <div class="flex justify-end">
+          <button onclick="triggerUpload('my-profile-input')"
+            class="btn-ghost text-xs font-semibold px-3 py-1.5 rounded-xl">📷 スクショ</button>
+        </div>
+        <input type="file" id="my-profile-input" accept="image/*" multiple class="hidden"
+          onchange="handleExtract(this,'my_profile','my-hobbies')">
+        <div id="my-previews" class="flex gap-1.5 flex-wrap"></div>
+        <div id="my-loading" class="hidden flex items-center gap-2 text-xs text-pink-500"><div class="spinner"></div><span>読み取り中...</span></div>
+        <textarea id="my-hobbies" rows="4"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none"
+          placeholder="自分のPairsプロフィールのタグや自己紹介"></textarea>
+        <label class="block text-sm font-semibold text-gray-700">補足メモ</label>
+        <textarea id="my-notes" rows="2"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none"
+          placeholder="例: 敬語は使わない、絵文字少なめ"></textarea>
+      </div>
+      <button onclick="saveSettings()"
+        class="btn-primary w-full text-white font-bold py-4 rounded-2xl shadow-md active:scale-95 transition-transform">
+        保存する
+      </button>
+      <div id="settings-saved" class="hidden text-center text-green-600 text-sm font-semibold">✓ 保存しました</div>
+    </div>
+
+  </main>
+
+  <!-- ボトムナビ -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-20">
+    <div class="max-w-lg mx-auto flex">
+      <button onclick="showPane('reply')" id="nav-reply" class="flex-1 py-3 flex flex-col items-center gap-0.5 text-gray-400 nav-active">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <span class="text-xs font-semibold">返信</span>
+      </button>
+      <button onclick="showPane('girls')" id="nav-girls" class="flex-1 py-3 flex flex-col items-center gap-0.5 text-gray-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span class="text-xs font-semibold">相手一覧</span>
+      </button>
+      <button onclick="showPane('style')" id="nav-style" class="flex-1 py-3 flex flex-col items-center gap-0.5 text-gray-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        <span class="text-xs font-semibold">スタイル学習</span>
+      </button>
+      <button onclick="showPane('settings')" id="nav-settings" class="flex-1 py-3 flex flex-col items-center gap-0.5 text-gray-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="text-xs font-semibold">設定</span>
+      </button>
+    </div>
+  </nav>
+
+</div>
+
+<!-- 相手選択モーダル -->
+<div id="girl-picker" class="hidden fixed inset-0 bg-black bg-opacity-40 z-30 flex items-end">
+  <div class="bg-white w-full max-w-lg mx-auto rounded-t-3xl p-5 space-y-3 max-h-96 overflow-y-auto">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="font-bold text-gray-800">相手を選択</h3>
+      <button onclick="closeGirlPicker()" class="text-gray-400 text-xl leading-none">×</button>
+    </div>
+    <div id="picker-list" class="space-y-2"></div>
+    <button onclick="addGirl(); closeGirlPicker();"
+      class="w-full border-2 border-dashed border-pink-200 text-pink-400 font-semibold py-3 rounded-xl text-sm">
+      ＋ 新しい相手を追加
+    </button>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────
+let currentUser = null;
+let currentGirl = null;
+let girls = [];
+let styleImages = [];
+let autoSaveTimer = null;
+
+// ─── Init ─────────────────────────────────────────────────
+(async () => {
+  const r = await fetch('/api/auth/me');
+  const d = await r.json();
+  if (d.username) {
+    currentUser = d.username;
+    await initApp();
+  } else {
+    document.getElementById('screen-auth').style.display = 'flex';
+  }
+})();
+
+async function initApp() {
+  document.getElementById('screen-auth').style.display = 'none';
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('setting-username').textContent = currentUser;
+  await loadGirls();
+  await loadSettings();
+  await loadStyle();
+  showPane('reply');
+}
+
+// ─── Auth ──────────────────────────────────────────────────
+async function doLogin() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value.trim();
+  const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username, password}) });
+  const d = await r.json();
+  if (d.error) { document.getElementById('auth-error').textContent = d.error; document.getElementById('auth-error').classList.remove('hidden'); return; }
+  currentUser = d.username;
+  await initApp();
+}
+
+async function doRegister() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value.trim();
+  if (!username || !password) { document.getElementById('auth-error').textContent='ユーザー名とパスワードを入力してください'; document.getElementById('auth-error').classList.remove('hidden'); return; }
+  const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username, password}) });
+  const d = await r.json();
+  if (d.error) { document.getElementById('auth-error').textContent = d.error; document.getElementById('auth-error').classList.remove('hidden'); return; }
+  currentUser = d.username;
+  await initApp();
+}
+
+async function doLogout() {
+  await fetch('/api/auth/logout', { method:'POST' });
+  currentUser = null; currentGirl = null;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('screen-auth').style.display = 'flex';
+}
+
+// ─── Navigation ────────────────────────────────────────────
+function showPane(name) {
+  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+  document.getElementById('pane-' + name).classList.add('active');
+  ['reply','girls','style','settings'].forEach(n => {
+    document.getElementById('nav-' + n).classList.toggle('nav-active', n === name);
+    document.getElementById('nav-' + n).classList.toggle('text-gray-400', n !== name);
+  });
+}
+
+// ─── Girls ─────────────────────────────────────────────────
+async function loadGirls() {
+  const r = await fetch('/api/girls');
+  girls = await r.json();
+  renderGirlsList();
+  renderPickerList();
+}
+
+function renderGirlsList() {
+  const container = document.getElementById('girls-list');
+  if (!girls.length) {
+    container.innerHTML = '<p class="text-center text-gray-400 text-sm py-6">まだ相手を追加していません</p>';
+    return;
+  }
+  container.innerHTML = girls.map(g => `
+    <div class="girl-item bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer"
+      onclick="selectGirl('${g.id}')">
+      <div>
+        <p class="font-semibold text-gray-800">${escHtml(g.name)}</p>
+        <p class="text-xs text-gray-400 mt-0.5">${g.conversation ? '会話ログあり' : '会話ログなし'}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        ${currentGirl && currentGirl.id === g.id ? '<span class="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full font-semibold">選択中</span>' : ''}
+        <button onclick="event.stopPropagation(); deleteGirl('${g.id}', '${escHtml(g.name)}')"
+          class="text-gray-300 hover:text-red-400 text-lg leading-none px-1">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderPickerList() {
+  const container = document.getElementById('picker-list');
+  if (!girls.length) { container.innerHTML = '<p class="text-center text-gray-400 text-sm py-2">まだ相手を追加していません</p>'; return; }
+  container.innerHTML = girls.map(g => `
+    <button onclick="selectGirl('${g.id}'); closeGirlPicker();"
+      class="w-full text-left girl-item bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+      <span class="font-semibold text-gray-800">${escHtml(g.name)}</span>
+      ${currentGirl && currentGirl.id === g.id ? '<span class="text-xs text-pink-500 font-semibold">選択中</span>' : ''}
+    </button>`).join('');
+}
+
+async function addGirl() {
+  const name = prompt('相手の名前やニックネームを入力（例: さくら、A子）');
+  if (!name) return;
+  const r = await fetch('/api/girls', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
+  const g = await r.json();
+  girls.unshift(g);
+  renderGirlsList();
+  renderPickerList();
+  selectGirl(g.id);
+  showPane('reply');
+}
+
+async function deleteGirl(id, name) {
+  if (!confirm(`「${name}」を削除しますか？会話ログも消えます。`)) return;
+  await fetch(`/api/girls/${id}`, { method:'DELETE' });
+  girls = girls.filter(g => g.id !== id);
+  if (currentGirl && currentGirl.id === id) {
+    currentGirl = null;
+    updateReplyUI();
+  }
+  renderGirlsList();
+  renderPickerList();
+}
+
+function selectGirl(id) {
+  const g = girls.find(x => x.id === id);
+  if (!g) return;
+  currentGirl = g;
+  document.getElementById('header-girl-name').textContent = g.name;
+  document.getElementById('conversation').value = g.conversation || '';
+  document.getElementById('partner-profile').value = g.profile || '';
+  document.getElementById('goal').value = g.goal || 'natural';
+  document.getElementById('conv-previews').innerHTML = '';
+  document.getElementById('partner-previews').innerHTML = '';
+  document.getElementById('results').classList.add('hidden');
+  updateReplyUI();
+  renderGirlsList();
+  renderPickerList();
+  showPane('reply');
+}
+
+function updateReplyUI() {
+  document.getElementById('no-girl-msg').classList.toggle('hidden', !!currentGirl);
+  document.getElementById('reply-main').classList.toggle('hidden', !currentGirl);
+}
+
+function openGirlPicker() { document.getElementById('girl-picker').classList.remove('hidden'); }
+function closeGirlPicker() { document.getElementById('girl-picker').classList.add('hidden'); }
+
+// ─── Auto save ─────────────────────────────────────────────
+function onConvChange() {
+  if (!currentGirl) return;
+  currentGirl.conversation = document.getElementById('conversation').value;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(saveCurrentGirl, 1500);
+}
+
+function onPartnerChange() {
+  if (!currentGirl) return;
+  currentGirl.profile = document.getElementById('partner-profile').value;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(saveCurrentGirl, 1500);
+}
+
+function onGoalChange() {
+  if (!currentGirl) return;
+  currentGirl.goal = document.getElementById('goal').value;
+  saveCurrentGirl();
+}
+
+async function saveCurrentGirl() {
+  if (!currentGirl) return;
+  await fetch(`/api/girls/${currentGirl.id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(currentGirl)
+  });
+}
+
+function clearConversation() {
+  if (!confirm('会話ログをクリアしますか？')) return;
+  document.getElementById('conversation').value = '';
+  document.getElementById('conv-previews').innerHTML = '';
+  if (currentGirl) { currentGirl.conversation = ''; saveCurrentGirl(); }
+}
+
+// ─── Screenshot extraction ─────────────────────────────────
+function triggerUpload(id) { document.getElementById(id).click(); }
+
+function fileToBase64(f) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(e.target.result);
+    reader.onerror = rej;
+    reader.readAsDataURL(f);
+  });
+}
+
+async function handleExtract(input, mode, targetId) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+
+  const loadingMap = { 'partner-profile':'partner-loading', 'conversation':'conv-loading', 'my-hobbies':'my-loading' };
+  const previewMap = { 'partner-profile':'partner-previews', 'conversation':'conv-previews', 'my-hobbies':'my-previews' };
+  const loadingEl = document.getElementById(loadingMap[targetId]);
+  const previewEl = document.getElementById(previewMap[targetId]);
+
+  if (loadingEl) loadingEl.classList.remove('hidden');
+
+  for (const f of files) {
+    const b64 = await fileToBase64(f);
+    const img = document.createElement('img');
+    img.src = b64;
+    img.className = 'w-12 h-12 object-cover rounded-lg border border-pink-200';
+    if (previewEl) previewEl.appendChild(img);
+  }
+
+  const results = [];
+  for (const f of files) {
+    const image = await fileToBase64(f);
+    try {
+      const r = await fetch('/api/extract', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ image, mode })
+      });
+      const d = await r.json();
+      if (!d.error) results.push(d.text);
+      else alert('読み取りエラー: ' + d.error);
+    } catch { alert('通信エラー'); }
+  }
+
+  if (results.length) {
+    const ta = document.getElementById(targetId);
+    const existing = ta.value.trim();
+    ta.value = existing ? existing + '\n' + results.join('\n') : results.join('\n');
+    if (targetId === 'conversation') onConvChange();
+    if (targetId === 'partner-profile') onPartnerChange();
+  }
+  if (loadingEl) loadingEl.classList.add('hidden');
+  input.value = '';
+}
+
+// ─── Style training ────────────────────────────────────────
+async function handleStyleImages(input) {
+  const files = Array.from(input.files);
+  styleImages = [];
+  const container = document.getElementById('style-previews');
+  container.innerHTML = '';
+  for (const f of files) {
+    const b64 = await fileToBase64(f);
+    styleImages.push(b64);
+    const img = document.createElement('img');
+    img.src = b64;
+    img.className = 'w-12 h-12 object-cover rounded-lg border border-pink-200';
+    container.appendChild(img);
+  }
+  input.value = '';
+}
+
+async function trainStyle() {
+  const text = document.getElementById('style-text').value.trim();
+  if (!text && !styleImages.length) { alert('テキストかスクショを入力してください'); return; }
+  document.getElementById('style-loading').classList.remove('hidden');
+  try {
+    const r = await fetch('/api/style/train', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text, images: styleImages })
+    });
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    document.getElementById('style-result-text').textContent = d.style;
+    document.getElementById('style-result-box').classList.remove('hidden');
+  } finally {
+    document.getElementById('style-loading').classList.add('hidden');
+  }
+}
+
+async function loadStyle() {
+  const r = await fetch('/api/profile');
+  const p = await r.json();
+  if (p.style) {
+    document.getElementById('style-result-text').textContent = p.style;
+    document.getElementById('style-result-box').classList.remove('hidden');
+  }
+}
+
+// ─── Settings ──────────────────────────────────────────────
+async function loadSettings() {
+  const r = await fetch('/api/profile');
+  const p = await r.json();
+  document.getElementById('api-key').value = p.api_key || '';
+  document.getElementById('my-hobbies').value = p.hobbies || '';
+  document.getElementById('my-notes').value = p.notes || '';
+}
+
+async function saveSettings() {
+  const p = {
+    api_key: document.getElementById('api-key').value.trim(),
+    hobbies: document.getElementById('my-hobbies').value,
+    notes:   document.getElementById('my-notes').value,
+  };
+  await fetch('/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p) });
+  flash('settings-saved');
+}
+
+// ─── Generate ──────────────────────────────────────────────
+async function generate() {
+  const conversation = document.getElementById('conversation').value.trim();
+  if (!conversation) { showError('会話ログを入力してください'); return; }
+
+  setGenLoading(true); hideError();
+  document.getElementById('results').classList.add('hidden');
+
+  try {
+    const r = await fetch('/api/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        conversation,
+        partner_profile: document.getElementById('partner-profile').value,
+        goal: document.getElementById('goal').value,
+        girl_id: currentGirl?.id
+      })
+    });
+    const d = await r.json();
+    if (d.error) { showError(d.error); return; }
+    parseAndShow(d.result);
+  } catch { showError('通信エラー'); }
+  finally { setGenLoading(false); }
+}
+
+function parseAndShow(text) {
+  const m1 = text.match(/【案1】\s*([\s\S]*?)(?=【案2】|$)/);
+  const m2 = text.match(/【案2】\s*([\s\S]*?)(?=【案3】|$)/);
+  const m3 = text.match(/【案3】\s*([\s\S]*?)$/);
+  [m1,m2,m3].forEach((m,i) => {
+    document.getElementById('text-'+(i+1)).textContent = m ? m[1].trim() : '（生成できませんでした）';
+  });
+  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+function copyReply(n) {
+  const text = document.getElementById('text-'+n).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btns = document.querySelectorAll(`#card-${n} button`);
+    btns[0].textContent = '✓ コピー済';
+    setTimeout(() => { btns[0].textContent = 'コピー'; }, 2000);
+  });
+}
+
+function markSent(n) {
+  const text = document.getElementById('text-'+n).textContent;
+  if (!text || text === '（生成できませんでした）') return;
+  const ta = document.getElementById('conversation');
+  const existing = ta.value.trim();
+  ta.value = existing ? existing + '\n自分: ' + text : '自分: ' + text;
+  onConvChange();
+  const btns = document.querySelectorAll(`#card-${n} button`);
+  btns[1].textContent = '✓ ログに追記済';
+  btns[1].classList.add('bg-green-200');
+  setTimeout(() => { btns[1].textContent = '✓ 送信済みとして記録'; btns[1].classList.remove('bg-green-200'); }, 2500);
+}
+
+// ─── Utils ─────────────────────────────────────────────────
+function setGenLoading(on) { document.getElementById('gen-loading').classList.toggle('hidden', !on); }
+function showError(msg) { const el = document.getElementById('gen-error'); el.textContent = msg; el.classList.remove('hidden'); }
+function hideError() { document.getElementById('gen-error').classList.add('hidden'); }
+function flash(id) { const el = document.getElementById(id); el.classList.remove('hidden'); setTimeout(() => el.classList.add('hidden'), 2500); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>

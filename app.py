@@ -338,6 +338,54 @@ def generate():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/manifest.json')
+def manifest():
+    from flask import Response
+    import json as _json
+    data = {
+        "name": "Pairs アシスタント",
+        "short_name": "Pairs助手",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#f8f0f5",
+        "theme_color": "#e0457b",
+        "orientation": "portrait",
+        "icons": [
+            {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+        ]
+    }
+    return Response(_json.dumps(data, ensure_ascii=False), mimetype='application/manifest+json')
+
+@app.route('/sw.js')
+def sw():
+    from flask import Response
+    js = """
+const CACHE = 'pairs-assistant-v1';
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.add('/')));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys =>
+    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', e => {
+  if (new URL(e.request.url).pathname.startsWith('/api/')) return;
+  e.respondWith(
+    fetch(e.request)
+      .then(r => { caches.open(CACHE).then(c => c.put(e.request, r.clone())); return r; })
+      .catch(() => caches.match(e.request))
+  );
+});
+""".strip()
+    return Response(js, mimetype='application/javascript')
+
 @app.route('/')
 def index():
     return render_template('index.html')
